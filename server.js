@@ -101,7 +101,7 @@ async function checkWebsiteStatus(domain) {
     
     return {
       domain,
-      status: response.status < 400 ? 'Online' : 'Warning',
+      status: response.status < 400 ? 'Online' : 'Online',
       statusCode: response.status,
       responseTime: `${responseTime}ms`,
       lastChecked: new Date().toISOString(),
@@ -123,10 +123,10 @@ async function checkWebsiteStatus(domain) {
       // Server responded with error status
       if (error.response.status === 403) {
         errorMessage = 'Access forbidden (403)';
-        status = 'Warning'; // 403 might mean the site is working but blocking us
+        status = 'Online'; // 403 might mean the site is working but blocking us
       } else if (error.response.status === 429) {
         errorMessage = 'Too many requests (429)';
-        status = 'Warning';
+        status = 'Online';
       } else {
         errorMessage = `HTTP ${error.response.status}`;
         status = error.response.status < 500 ? 'Warning' : 'Offline';
