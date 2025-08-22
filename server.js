@@ -40,12 +40,63 @@ const domains = [
 async function checkWebsiteStatus(domain) {
   try {
     const startTime = Date.now();
-    const response = await axios.get(`https://${domain}`, {
-      timeout: 10000,
-      validateStatus: function (status) {
-        return status < 500; // Accept any status less than 500
+    
+    // Try multiple approaches to check the website
+    let response;
+    let usedMethod = 'https';
+    
+    try {
+      // First try HTTPS
+      response = await axios.get(`https://${domain}`, {
+        timeout: 10000,
+        validateStatus: function (status) {
+          return status < 500; // Accept any status less than 500
+        },
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      });
+    } catch (httpsError) {
+      // If HTTPS fails, try HTTP
+      try {
+        response = await axios.get(`http://${domain}`, {
+          timeout: 10000,
+          validateStatus: function (status) {
+            return status < 500;
+          },
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          }
+        });
+        usedMethod = 'http';
+      } catch (httpError) {
+        // If both fail, try just checking if the domain resolves
+        try {
+          const dnsResponse = await axios.get(`https://dns.google/resolve?name=${domain}`, {
+            timeout: 5000
+          });
+          
+          if (dnsResponse.data.Status === 0 && dnsResponse.data.Answer && dnsResponse.data.Answer.length > 0) {
+            // Domain resolves but website is not accessible
+            return {
+              domain,
+              status: 'Warning',
+              statusCode: 'DNS OK',
+              responseTime: 'N/A',
+              lastChecked: new Date().toISOString(),
+              isOnline: false,
+              error: 'Domain resolves but website not accessible',
+              method: 'dns'
+            };
+          } else {
+            throw new Error('Domain does not resolve');
+          }
+        } catch (dnsError) {
+          throw new Error('Domain not accessible');
+        }
       }
-    });
+    }
+    
     const responseTime = Date.now() - startTime;
     
     return {
@@ -54,17 +105,43 @@ async function checkWebsiteStatus(domain) {
       statusCode: response.status,
       responseTime: `${responseTime}ms`,
       lastChecked: new Date().toISOString(),
-      isOnline: response.status < 400
+      isOnline: response.status < 400,
+      method: usedMethod
     };
   } catch (error) {
+    // Handle specific error types
+    let errorMessage = error.message;
+    let status = 'Offline';
+    
+    if (error.code === 'ECONNREFUSED') {
+      errorMessage = 'Connection refused';
+    } else if (error.code === 'ENOTFOUND') {
+      errorMessage = 'Domain not found';
+    } else if (error.code === 'ETIMEDOUT') {
+      errorMessage = 'Connection timeout';
+    } else if (error.response) {
+      // Server responded with error status
+      if (error.response.status === 403) {
+        errorMessage = 'Access forbidden (403)';
+        status = 'Warning'; // 403 might mean the site is working but blocking us
+      } else if (error.response.status === 429) {
+        errorMessage = 'Too many requests (429)';
+        status = 'Warning';
+      } else {
+        errorMessage = `HTTP ${error.response.status}`;
+        status = error.response.status < 500 ? 'Warning' : 'Offline';
+      }
+    }
+    
     return {
       domain,
-      status: 'Offline',
-      statusCode: 'N/A',
+      status: status,
+      statusCode: error.response ? error.response.status : 'N/A',
       responseTime: 'N/A',
       lastChecked: new Date().toISOString(),
       isOnline: false,
-      error: error.message
+      error: errorMessage,
+      method: 'failed'
     };
   }
 }

@@ -152,6 +152,7 @@
                     const statusBadge = domainCard.querySelector('.status-badge');
                     const statusCode = domainCard.querySelector('.status-code');
                     const responseTime = domainCard.querySelector('.response-time');
+                    const methodUsed = domainCard.querySelector('.method-used');
                     const lastChecked = domainCard.querySelector('.last-checked');
 
                     // Update status badge
@@ -161,6 +162,38 @@
                     // Update other fields
                     statusCode.textContent = status.statusCode;
                     responseTime.textContent = status.responseTime;
+                    
+                    // Update method with better formatting
+                    if (methodUsed) {
+                        let methodText = status.method || 'N/A';
+                        let methodClass = 'bg-gray-100 text-gray-700';
+                        
+                        if (methodText === 'https') {
+                            methodClass = 'bg-green-100 text-green-700';
+                        } else if (methodText === 'http') {
+                            methodClass = 'bg-yellow-100 text-yellow-700';
+                        } else if (methodText === 'dns') {
+                            methodClass = 'bg-blue-100 text-blue-700';
+                        } else if (methodText === 'failed') {
+                            methodClass = 'bg-red-100 text-red-700';
+                        }
+                        
+                        methodUsed.className = `method-used font-medium text-xs px-2 py-1 rounded ${methodClass}`;
+                        methodUsed.textContent = methodText.toUpperCase();
+                    }
+                    
+                    // Show/hide error information
+                    const errorInfo = domainCard.querySelector('.error-info');
+                    const errorMessage = domainCard.querySelector('.error-message');
+                    if (errorInfo && errorMessage) {
+                        if (status.error && status.error !== 'N/A') {
+                            errorMessage.textContent = status.error;
+                            errorInfo.classList.remove('hidden');
+                        } else {
+                            errorInfo.classList.add('hidden');
+                        }
+                    }
+                    
                     lastChecked.textContent = new Date(status.lastChecked).toLocaleTimeString();
 
                     // Update card background based on status
@@ -243,8 +276,17 @@
                             <span class="response-time font-medium">-</span>
                         </div>
                         <div class="flex justify-between">
+                            <span class="text-gray-600">Method:</span>
+                            <span class="method-used font-medium text-xs bg-gray-100 px-2 py-1 rounded">-</span>
+                        </div>
+                        <div class="flex justify-between">
                             <span class="text-gray-600">Last Checked:</span>
                             <span class="last-checked font-medium">-</span>
+                        </div>
+                        <div class="error-info hidden">
+                            <div class="text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
+                                <span class="error-message"></span>
+                            </div>
                         </div>
                     </div>
                     
