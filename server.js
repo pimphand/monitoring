@@ -101,7 +101,7 @@ async function checkWebsiteStatus(domain) {
     
     return {
       domain,
-      status: response.status < 400 ? 'Online' : 'Online',
+      status: response.status < 400 ? 'Online' : 'Warning',
       statusCode: response.status,
       responseTime: `${responseTime}ms`,
       lastChecked: new Date().toISOString(),
