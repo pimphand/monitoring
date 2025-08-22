@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Monitoring Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'status-online': '#10b981',
+                        'status-warning': '#f59e0b',
+                        'status-offline': '#ef4444'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">Website Monitoring Dashboard</h1>
+            <p class="text-gray-600">Monitoring 21 domains for availability and performance</p>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex flex-wrap gap-4 justify-center mb-8">
+            <button id="checkAllBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Check All Domains
+            </button>
+            <button id="autoRefreshBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span id="autoRefreshText">Enable Auto Refresh</span>
+            </button>
+            <div class="flex items-center gap-2">
+                <label for="refreshInterval" class="text-gray-700 font-medium">Interval:</label>
+                <select id="refreshInterval" class="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="30">30 seconds</option>
+                    <option value="60" selected>1 minute</option>
+                    <option value="300">5 minutes</option>
+                    <option value="600">10 minutes</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Status Summary -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow-md p-6 text-center">
+                <div class="text-3xl font-bold text-status-online" id="onlineCount">0</div>
+                <div class="text-gray-600">Online</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-6 text-center">
+                <div class="text-3xl font-bold text-status-warning" id="warningCount">0</div>
+                <div class="text-gray-600">Warning</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-6 text-center">
+                <div class="text-3xl font-bold text-status-offline" id="offlineCount">0</div>
+                <div class="text-gray-600">Offline</div>
+            </div>
+        </div>
+
+        <!-- Last Updated -->
+        <div class="text-center mb-6">
+            <p class="text-gray-600">Last updated: <span id="lastUpdated" class="font-medium">Never</span></p>
+        </div>
+
+        <!-- Domains Grid -->
+        <div id="domainsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Domain cards will be populated here -->
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="hidden text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <p class="mt-4 text-gray-600">Checking website statuses...</p>
+        </div>
+    </div>
+
+    <script>
+        class WebsiteMonitor {
+            constructor() {
+                this.domains = [];
+                this.autoRefreshInterval = null;
+                this.refreshInterval = 60000; // 1 minute default
+                this.isAutoRefreshEnabled = false;
+                
+                this.initializeEventListeners();
+                this.loadInitialData();
+            }
+
+            initializeEventListeners() {
+                document.getElementById('checkAllBtn').addEventListener('click', () => this.checkAllDomains());
+                document.getElementById('autoRefreshBtn').addEventListener('click', () => this.toggleAutoRefresh());
+                document.getElementById('refreshInterval').addEventListener('change', (e) => this.updateRefreshInterval(e.target.value));
+            }
+
+            async loadInitialData() {
+                try {
+                    const response = await fetch('/api/domains');
+                    this.domains = await response.json();
+                    this.renderDomains();
+                    this.checkAllDomains();
+                } catch (error) {
+                    console.error('Failed to load domains:', error);
+                }
+            }
+
+            async checkAllDomains() {
+                this.showLoading(true);
+                try {
+                    const response = await fetch('/api/status');
+                    const statuses = await response.json();
+                    this.updateDomainsStatus(statuses);
+                    this.updateSummary(statuses);
+                    this.updateLastUpdated();
+                } catch (error) {
+                    console.error('Failed to check domains:', error);
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            async checkSingleDomain(domain) {
+                try {
+                    const response = await fetch(`/api/status/${encodeURIComponent(domain)}`);
+                    const status = await response.json();
+                    this.updateSingleDomainStatus(status);
+                    this.updateSummaryFromCurrentData();
+                } catch (error) {
+                    console.error(`Failed to check domain ${domain}:`, error);
+                }
+            }
+
+            updateDomainsStatus(statuses) {
+                statuses.forEach(status => {
+                    this.updateSingleDomainStatus(status);
+                });
+            }
+
+            updateSingleDomainStatus(status) {
+                const domainCard = document.querySelector(`[data-domain="${status.domain}"]`);
+                if (domainCard) {
+                    const statusBadge = domainCard.querySelector('.status-badge');
+                    const statusCode = domainCard.querySelector('.status-code');
+                    const responseTime = domainCard.querySelector('.response-time');
+                    const lastChecked = domainCard.querySelector('.last-checked');
+
+                    // Update status badge
+                    statusBadge.className = `status-badge px-3 py-1 rounded-full text-sm font-medium ${this.getStatusClasses(status.status)}`;
+                    statusBadge.textContent = status.status;
+
+                    // Update other fields
+                    statusCode.textContent = status.statusCode;
+                    responseTime.textContent = status.responseTime;
+                    lastChecked.textContent = new Date(status.lastChecked).toLocaleTimeString();
+
+                    // Update card background based on status
+                    domainCard.className = `bg-white rounded-lg shadow-md p-6 transition-all duration-200 ${this.getCardBackground(status.status)}`;
+                }
+            }
+
+            getStatusClasses(status) {
+                switch (status) {
+                    case 'Online': return 'bg-status-online text-white';
+                    case 'Warning': return 'bg-status-warning text-white';
+                    case 'Offline': return 'bg-status-offline text-white';
+                    default: return 'bg-gray-500 text-white';
+                }
+            }
+
+            getCardBackground(status) {
+                switch (status) {
+                    case 'Online': return 'border-l-4 border-status-online';
+                    case 'Warning': return 'border-l-4 border-status-warning';
+                    case 'Offline': return 'border-l-4 border-status-offline';
+                    default: return '';
+                }
+            }
+
+            updateSummary(statuses) {
+                const online = statuses.filter(s => s.status === 'Online').length;
+                const warning = statuses.filter(s => s.status === 'Warning').length;
+                const offline = statuses.filter(s => s.status === 'Offline').length;
+
+                document.getElementById('onlineCount').textContent = online;
+                document.getElementById('warningCount').textContent = warning;
+                document.getElementById('offlineCount').textContent = offline;
+            }
+
+            updateSummaryFromCurrentData() {
+                const statuses = Array.from(document.querySelectorAll('.status-badge')).map(badge => ({
+                    status: badge.textContent
+                }));
+                this.updateSummary(statuses);
+            }
+
+            updateLastUpdated() {
+                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+            }
+
+            renderDomains() {
+                const grid = document.getElementById('domainsGrid');
+                grid.innerHTML = '';
+
+                this.domains.forEach(domain => {
+                    const card = this.createDomainCard(domain);
+                    grid.appendChild(card);
+                });
+            }
+
+            createDomainCard(domain) {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-lg shadow-md p-6 transition-all duration-200';
+                card.setAttribute('data-domain', domain);
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800 truncate" title="${domain}">${domain}</h3>
+                        <span class="status-badge px-3 py-1 rounded-full text-sm font-medium bg-gray-500 text-white">Checking...</span>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Status Code:</span>
+                            <span class="status-code font-medium">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Response Time:</span>
+                            <span class="response-time font-medium">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Last Checked:</span>
+                            <span class="last-checked font-medium">-</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 space-y-2">
+                        <button onclick="monitor.checkSingleDomain('${domain}')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200">
+                            Check Now
+                        </button>
+                        <button onclick="monitor.openDomainInNewTab('${domain}')" class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                            </svg>
+                            Open Website
+                        </button>
+                    </div>
+                `;
+
+                return card;
+            }
+
+            toggleAutoRefresh() {
+                if (this.isAutoRefreshEnabled) {
+                    this.disableAutoRefresh();
+                } else {
+                    this.enableAutoRefresh();
+                }
+            }
+
+            enableAutoRefresh() {
+                this.isAutoRefreshEnabled = true;
+                this.autoRefreshInterval = setInterval(() => {
+                    this.checkAllDomains();
+                }, this.refreshInterval);
+                
+                document.getElementById('autoRefreshText').textContent = 'Disable Auto Refresh';
+                document.getElementById('autoRefreshBtn').classList.remove('bg-green-600', 'hover:bg-green-700');
+                document.getElementById('autoRefreshBtn').classList.add('bg-red-600', 'hover:bg-red-700');
+            }
+
+            disableAutoRefresh() {
+                this.isAutoRefreshEnabled = false;
+                if (this.autoRefreshInterval) {
+                    clearInterval(this.autoRefreshInterval);
+                    this.autoRefreshInterval = null;
+                }
+                
+                document.getElementById('autoRefreshText').textContent = 'Enable Auto Refresh';
+                document.getElementById('autoRefreshBtn').classList.remove('bg-red-600', 'hover:bg-red-700');
+                document.getElementById('autoRefreshBtn').classList.add('bg-green-600', 'hover:bg-green-700');
+            }
+
+            updateRefreshInterval(seconds) {
+                this.refreshInterval = parseInt(seconds) * 1000;
+                if (this.isAutoRefreshEnabled) {
+                    this.disableAutoRefresh();
+                    this.enableAutoRefresh();
+                }
+            }
+
+            showLoading(show) {
+                const loadingState = document.getElementById('loadingState');
+                const domainsGrid = document.getElementById('domainsGrid');
+                
+                if (show) {
+                    loadingState.classList.remove('hidden');
+                    domainsGrid.classList.add('opacity-50');
+                } else {
+                    loadingState.classList.add('hidden');
+                    domainsGrid.classList.remove('opacity-50');
+                }
+            }
+
+            openDomainInNewTab(domain) {
+                const url = `https://${domain}`;
+                window.open(url, '_blank', 'noopener,noreferrer');
+            }
+        }
+
+        // Initialize the monitor when the page loads
+        let monitor;
+        document.addEventListener('DOMContentLoaded', () => {
+            monitor = new WebsiteMonitor();
+        });
+    </script>
+</body>
+</html> 
